@@ -1,12 +1,20 @@
-from xmlrpc.server import SimpleXMLRPCServer
+with SimpleXMLRPCServer(('localhost', 8000),
+                        requestHandler=RequestHandler) as server:
+    server.register_introspection_functions()
 
-def add(a, b):
-    return a + b
+    
+    # Register a function under a different name
+    def adder_function(x, y):
+        return x + y
+    server.register_function(adder_function, 'add')
 
-server = SimpleXMLRPCServer(("0.0.0.0", 8000))
+    # Register an instance; all the methods of the instance are
+    # published as XML-RPC methods (in this case, just 'mul').
+    class MyFuncs:
+        def mul(self, x, y):
+            return x * y
 
-print("Server đang chạy tại cổng 8000...")
+    server.register_instance(MyFuncs())
 
-server.register_function(add, "add")
-
-server.serve_forever()
+    # Run the server's main loop
+    server.serve_forever()
