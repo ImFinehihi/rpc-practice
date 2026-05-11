@@ -1,22 +1,49 @@
+#!/usr/bin/env python
 import pika
+import uuid
 
-connection = pika.BlockingConnection(
-    pika.ConnectionParameters('localhost')
-)
 
-channel = connection.channel()
+class FibonacciRpcClient(object):
 
-channel.queue_declare(queue='hello')
+    def __init__(self):
+        self.connection = pika.BlockingConnection(
+            pika.ConnectionParameters(host='localhost'))
 
-print("Đang chờ message...")
+        self.channel = self.connection.channel()
 
-def callback(ch, method, properties, body):
-    print("Nhận được:", body.decode())
+        result = self.channel.queue_declare(queue='', exclusive=True)
+        self.callback_queue = result.method.queue
 
-channel.basic_consume(
-    queue='hello',
-    on_message_callback=callback,
-    auto_ack=True
-)
+        self.channel.basic_consume(
+            queue=self.callback_queue,
+            on_message_callback=self.on_response,
+            auto_ack=True)
 
-channel.start_consuming()
+        self.response = None
+        self.corr_id = None
+
+    def on_response(self, ch, method, props, body):
+        if self.corr_id == props.correlation_id:
+            self.response = body
+
+    def call(self, n):
+        self.response = None
+        self.corr_id = str(uuid.uuid4())
+        self.channel.basic_publish(
+            exchange='',
+            routing_key='rpc_queue',
+            properties=pika.BasicProperties(
+                reply_to=self.callback_queue,
+                correlation_id=self.corr_id,
+            ),
+            body=str(n))
+        while self.response is None:
+            self.connection.process_data_events(time_limit=None)
+        return int(self.response)
+
+
+fibonacci_rpc = FibonacciRpcClient()
+
+print(" [x] Requesting fib(30)")
+response = fibonacci_rpc.call(30)
+print(f" [.] Got {response}")
